@@ -10,10 +10,10 @@ namespace esphome::midea_dishwasher {
 
     void MideaDishwasher::loop() {
         read_uart_(tx_iface_, tx_iface_buffer_);
-        process_buffer_(tx_iface_buffer_, TX_PACKET_LEN);
+        process_buffer_(tx_iface_buffer_, true);
 
         read_uart_(rx_iface_, rx_iface_buffer_);
-        process_buffer_(rx_iface_buffer_, RX_PACKET_LEN);
+        process_buffer_(rx_iface_buffer_, false);
     }
 
     void MideaDishwasher::read_uart_(uart::UARTComponent *uart, std::vector<uint8_t> &buffer) {
@@ -29,19 +29,24 @@ namespace esphome::midea_dishwasher {
         }
     }
 
-    void MideaDishwasher::process_buffer_(std::vector<uint8_t> &buffer, uint8_t data_len) {
-        size_t packet_size = 3 + data_len;
-        
-        while (buffer.size() >= packet_size) {
+    void MideaDishwasher::process_buffer_(std::vector<uint8_t> &buffer, bool tx_packet) {
+        while (buffer.size() >= 3) {
             if (buffer[0] != PREAMBLE) {
                 buffer.erase(buffer.begin());
                 continue;
             }
 
-            if (buffer[1] != data_len) {
+            uint8_t data_len = buffer[1];
+            bool valid_length = tx_packet ? (data_len == TX_PACKET_LEN || data_len == TX_PACKET_LEN_VARIANT)
+                                          : (data_len == RX_PACKET_LEN);
+            if (!valid_length) {
                 buffer.erase(buffer.begin());
                 continue;
             }
+
+            size_t packet_size = 3 + data_len;
+            if (buffer.size() < packet_size)
+                return;
 
             uint8_t checksum = 0;
             for (size_t i = 0; i < data_len; i++) 
@@ -52,14 +57,21 @@ namespace esphome::midea_dishwasher {
                 continue;
             }
 
-            if (TX_PACKET_LEN == data_len) process_tx_packet_(buffer);
-            if (RX_PACKET_LEN == data_len) process_rx_packet_(buffer);
+            if (tx_packet) {
+                if (detected_tx_packet_len_ != data_len) {
+                    detected_tx_packet_len_ = data_len;
+                    ESP_LOGI(TAG, "Detected status packet payload length: 0x%02X", data_len);
+                }
+                process_tx_packet_(buffer, data_len);
+            } else {
+                process_rx_packet_(buffer);
+            }
 
             buffer.erase(buffer.begin(), buffer.begin() + packet_size);
         }
     }
 
-    void MideaDishwasher::process_tx_packet_(std::vector<uint8_t> &buffer) {
+    void MideaDishwasher::process_tx_packet_(std::vector<uint8_t> &buffer, uint8_t data_len) {
         uint8_t *data = buffer.data();
         
         publish_state_(error_, data[10] != 0);
@@ -68,14 +80,16 @@ namespace esphome::midea_dishwasher {
         publish_state_(rinse_aid_low_, (data[13] & 0x20) != 0);
         publish_state_(extra_dry_, (data[15] & 0x02) != 0);
         publish_state_(cycle_complete_, (data[12] & 0x07) == 5);
-        publish_state_(paused_, (data[3] & 0x0f) == 3 && (data[3] >> 4) == 3 || (data[3] & 0x0f) == 2 && (data[3] >> 4) == 2);
+        publish_state_(paused_,
+                       ((data[3] & 0x0f) == 3 && (data[3] >> 4) == 3) ||
+                           ((data[3] & 0x0f) == 2 && (data[3] >> 4) == 2));
         publish_state_(running_, (data[3] >> 4) == 3);
         publish_state_(system_main_state_, data[3] >> 4);
         publish_state_(system_sub_state_, data[3] & 0x0f);
         publish_state_(program_phase_, data[12] & 0x07);
         publish_state_(operation_state_, data[4]);
         publish_state_(time_remaining_, data[5]);
-        publish_state_(live_temperature_, (data[8] * 2) + 20);
+        publish_state_(live_temperature_, data_len == TX_PACKET_LEN_VARIANT ? data[9] : (data[8] * 2) + 20);
         publish_state_(error_code_, data[10]);
         publish_state_(water_hardness_, data[12] >> 3);
         
@@ -102,6 +116,7 @@ namespace esphome::midea_dishwasher {
         const char* program = "Unknown";    
         switch (data[11]) {
             case 0:  program = "No Program"; break;
+            case 1:  program = "AUTO"; break;
             case 2:  program = "P1 Intensive"; break;
             case 3:  program = "P2 Universal"; break;
             case 4:  program = "P3 ECO"; break;
@@ -157,7 +172,9 @@ namespace esphome::midea_dishwasher {
                 break;
             case 3: {
                 uint8_t sub = data[3] & 0x0f;
-                if (sub == 4) {
+                if (sub == 1) {
+                    status = "Running - Transitioning";
+                } else if (sub == 4) {
                     status = "Ending";
                 } else if (sub == 3) {
                     status = "Paused";

@@ -1,6 +1,9 @@
 # ESPHome Midea Dishwasher Component
 ESPHome external component that decodes the UART protocol between a Midea countertop dishwasher's control board and display panel, exposing all interesting state to Home Assistant.
 
+### Fork notes
+The component now accepts both the original `0x1f` status payload and a shorter `0x1d` variant. On the `0x1d` variant, program code `1` is decoded as `AUTO` and byte 9 is used as the reported water temperature.
+
 ## Hardware
 The ESP32 passively sniffs two 9600 baud UART lines (TX and RX) between the control board and the front panel. Both lines use **9600 baud, 8N1** (even parity). The ESP only reads — it does not inject packets.
 
@@ -54,7 +57,7 @@ text_sensor:
 | Key | Description | Example Values |
 |-----|-------------|---------------|
 | `hr_status` | Human-readable system status combining system state, sub-state and cycle stage | Powered Off, Idle, Complete, Running - Pre-wash, Running - Main Wash, Running - Rinse, Running - Drying, Paused, Ending, Delay Start - Active, Delay Start - Paused, Error, Hardness Setting, Test Mode |
-| `current_program` | Currently selected wash program | No Program, P1 Intensive, P2 Universal, P3 ECO, P4 Glass, P5 90 min, P6 Rapid, P7 Self-Clean |
+| `current_program` | Currently selected wash program | No Program, AUTO, P1 Intensive, P2 Universal, P3 ECO, P4 Glass, P5 90 min, P6 Rapid, P7 Self-Clean |
 | `hr_current_program_phase` | Current cycle stage | Idle, Pre-wash, Main Wash, Rinse, Dry, Complete |
 | `hr_system_operation` | Active hardware operation (what the machine is physically doing) | Idle, Drain Pump, Water Inlet, Heater + Spray Pump, Spray Pump, Heater + Spray Pump + Rinse-aid, Heater + Spray Pump + Detergent, Wait, Pulsed Spray Pump, Regeneration Valve, Regeneration Drain, Program Select Display, End Program Display |
 

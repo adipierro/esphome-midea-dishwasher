@@ -9,6 +9,7 @@ namespace esphome::midea_dishwasher {
     static const char *TAG = "midea_dishwasher.component";
     static const uint8_t PREAMBLE = 0x55;
     static const uint8_t TX_PACKET_LEN = 0x1f;
+    static const uint8_t TX_PACKET_LEN_VARIANT = 0x1d;
     static const uint8_t RX_PACKET_LEN = 0x10;
 
     class MideaDishwasher : public Component {
@@ -45,6 +46,7 @@ namespace esphome::midea_dishwasher {
             uart::UARTComponent *tx_iface_, *rx_iface_;
             std::vector<uint8_t> tx_iface_buffer_, rx_iface_buffer_;
             uint8_t cycle_total_minutes_{0};
+            uint8_t detected_tx_packet_len_{0};
             bool was_running_{false};
 
             binary_sensor::BinarySensor *door_open_{nullptr};
@@ -75,8 +77,8 @@ namespace esphome::midea_dishwasher {
 
 
             void read_uart_(uart::UARTComponent *uart, std::vector<uint8_t> &buffer);
-            void process_buffer_(std::vector<uint8_t> &buffer, uint8_t data_len);
-            void process_tx_packet_(std::vector<uint8_t> &buffer);
+            void process_buffer_(std::vector<uint8_t> &buffer, bool tx_packet);
+            void process_tx_packet_(std::vector<uint8_t> &buffer, uint8_t data_len);
             void process_rx_packet_(std::vector<uint8_t> &buffer);
             
             template <typename T, typename V>
