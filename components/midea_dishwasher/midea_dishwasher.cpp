@@ -1,3 +1,5 @@
+#include <algorithm>
+
 #include "esphome/core/log.h"
 #include "midea_dishwasher.h"
 
@@ -17,15 +19,26 @@ namespace esphome::midea_dishwasher {
     }
 
     void MideaDishwasher::read_uart_(uart::UARTComponent *uart, std::vector<uint8_t> &buffer) {
-        while (uart->available()) {
-            uint8_t byte;
-            uart->read_byte(&byte);
-            buffer.push_back(byte);
+        static constexpr size_t READ_CHUNK_SIZE = 64;
+        static constexpr size_t MAX_BUFFER_SIZE = 96;
+        static constexpr size_t MAX_BYTES_PER_LOOP = MAX_BUFFER_SIZE;
 
-            if (buffer.size() > 96) {
-                ESP_LOGW(TAG, "UART buffer getting too large, clearing buffer");
-                buffer.erase(buffer.begin(), buffer.begin() + 16);
+        uint8_t chunk[READ_CHUNK_SIZE];
+
+        // Snapshot the available byte count so a continuous stream cannot keep
+        // this component in the read loop indefinitely. Any bytes received after
+        // the snapshot remain in the UART ring buffer for the next loop call.
+        size_t remaining = std::min(uart->available(), MAX_BYTES_PER_LOOP);
+
+        while (remaining > 0 && buffer.size() < MAX_BUFFER_SIZE) {
+            const size_t free_space = MAX_BUFFER_SIZE - buffer.size();
+            const size_t count = std::min(std::min(remaining, READ_CHUNK_SIZE), free_space);
+            if (!uart->read_array(chunk, count)) {
+                break;
             }
+
+            buffer.insert(buffer.end(), chunk, chunk + count);
+            remaining -= count;
         }
     }
 
