@@ -33,7 +33,14 @@ uart:
 midea_dishwasher:
   tx_uart: uart_dishwasher_tx
   rx_uart: uart_dishwasher_rx
+  # Optional workaround for ESPHome 2026.8 interrupt-watchdog crashes.
+  # Disables the ISR callback that wakes the main loop for every received byte.
+  disable_uart_wake_loop_on_rx: true
 ```
+
+`disable_uart_wake_loop_on_rx` defaults to `false`. When enabled, it removes
+ESPHome's global `USE_UART_WAKE_LOOP_ON_RX` compile-time feature for the whole
+firmware; UART data remains buffered and is consumed through normal polling.
 
 ## Available Entities
 
@@ -191,6 +198,7 @@ uart:
 midea_dishwasher:
   tx_uart: uart_dishwasher_tx
   rx_uart: uart_dishwasher_rx
+  disable_uart_wake_loop_on_rx: true
 
 text_sensor:
   - platform: midea_dishwasher
